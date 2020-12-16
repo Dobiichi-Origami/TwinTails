@@ -9,7 +9,7 @@
 > * GCD (General Central Dispatch)
 > * NSOperation & NSOperationQueue
 
-​	其中pthread是一个遵从POSIX标准的操作系统所提供的底层应用接口，也就是说这个API你可以在MacOS，iOS哪怕是WatchOS上都可以用，包括Unix\Linux也是一样。
+​	其中pthread是一个遵从POSIX标准的操作系统所提供的底层系统调用，也就是说这个Syscall你可以在MacOS，iOS哪怕是WatchOS上都可以用，包括Unix\Linux也是一样。
 
 ​	不过作为一个纯C加汇编实现的底层函数，这里不做任何讨论。
 
@@ -129,8 +129,136 @@ concurrentQueue.sync {
 
 ## 重新总结串/并行队列
 
-串行队列：同时仅允许一份任务被调度并获取线程资源，无论同步还是异步，严格按照FIFO的顺序对其进行执行，不存在有两个及以上的任务同时执行的情况。
+串行队列：同时仅允许一份任务被调度并获取线程资源。无论同步还是异步，严格按照FIFO的顺序对其进行执行，不存在有两个及以上的任务同时执行的情况。
 
 并行队列：如果遇到异步任务，会在线程池中寻找可用线程并且将它丢给线程自由运行，然后fallthrough到队列中的下一个任务继续进行调度；如果遇到同步任务，将会阻塞该队列，直到同步任务执行完毕。
 
-# 未完待续
+# DispatchGroup（调度组）
+
+​	通过上面的循环嵌套同步/异步调用的方法，可以解决绝大多数现实开发中所遇到的问题。但是这种嵌套式的写法总归还是不甚美观与繁琐，为了用美观的方法去实现相同的功能，我们可以使用调度组来实现。
+
+​	调度组是用来组织和管理多项待执行任务用的一种结构，下面先写出两种常用的调度组函数
+
+```swift
+let group = DispatchGroup()
+group.notify(queue: queueWhereYouWantToExecuteCode){closure}
+// notify()函数可以在组内所有的任务都被执行完之后异步调用，在参数所指定的DispatchQueue中异步执行闭包中的代码
+group.wait(timeout: TimeInterval)
+// wait()函数在被调用时会阻塞当前执行队列，阻塞时间长短由参数决定，缺省为无限期。在达到预设阻塞时间或任务在预定时间内完成时会返回一个enum，代表了任务的完成或超时。
+```
+
+​	调度组的出现，允许我们更加直观和简洁的完成我们的任务。以同时进行两次异步网络调用后刷新UI的例子举例
+
+​	在不使用DispatchGroup的情况下，我们是这么写的：
+
+```swift
+let queue = DispatchQueue(label: "concurrent", attributes: .concurrent)
+
+queue.async{
+  queue.async{
+    /* 在这里执行你的网络请求 */
+    DispatchQueue.main.async{
+    	/* 执行UI刷新 */
+  	}
+  }
+  /* 在这里执行你的网络请求 */
+}
+```
+
+​	在使用了DispatchGroup以后，我们可以改为这么写：
+
+```swift
+let queue = DispatchQueue(label: "concurrent", attributes: .concurrent)
+let group = DispatchGroup()
+
+queue.async(group: group){
+  /* 在这里执行你的网络请求 */
+}
+
+queue.async(group: group){
+  /* 在这里执行你的网络请求 */
+}
+
+print("开始监听")
+
+group.notify(queue: DispatchQueue.main){
+  /* 执行UI刷新 */
+}
+
+/* group.wait()
+	如果你想的话还可以在这里阻塞主队列，等待任务执行完毕后解除阻塞 */
+
+print("监听完毕")
+```
+
+​	对比两种写法的代码，后者在代码可读性和可维护性上好于前者，尤其是在嵌套情况相当多的时候，虽然两者在运行上的效果基本一致，取决于开发者的偏好，并不存在真正的高下之分。
+
+#  .barrier
+
+​	为了管理线程的运行状态，除了上面的调度组以外，我们还有信号量以及.barrier可以满足我们的需求。
+
+​	在DispatchWorkItem的构造函数中，我们除了可以定义闭包内容以外，还可以设置其中的flag参数为.barrier。设置了.barrier的DispatchWorkItem在被调用到时并不会立即执行，而是等待当前队列中正在执行的所有DispatchWorkItem全部执行完之后再单独执行，单独执行完后再正常进行余下的内容调用。以下代码可以演示相关效果，此处不再赘述：
+
+```swift
+let item1 = DispatchWorkItem {
+   // 执行内容
+}
+
+let item2 = DispatchWorkItem {
+   // 执行内容
+}
+
+//给item3任务加barrier标识
+let item3 = DispatchWorkItem(flags: .barrier) {
+   // 执行内容
+}
+
+let item4 = DispatchWorkItem {
+	// 执行内容
+}
+
+let item5 = DispatchWorkItem {
+	// 执行内容
+}
+
+let queue = DispatchQueue(label: "test", attributes: .concurrent)
+queue.async(execute: item1)
+queue.async(execute: item2)
+queue.async(execute: item3)
+queue.async(execute: item4)
+queue.async(execute: item5)
+```
+
+设置flag为.barrier的方式对全局队列不生效，原因有待深入研究。对串行队列使用.barrier没有意义，在并行队列中使用sync代码块可以达到相同的效果，只不过该任务将被放入主线程中执行，需要用户酌情考量。
+
+# DispatchSemaphore（信号量）
+
+​	信号量这个名称不知道是何人翻译的，初看并不是那么直观易于理解。
+
+​	DispatchSemaphore更像是用来控制流量的节流阀，用来控制同时执行的任务数量。以下代码可以初始化一个DispatchSemaphore
+
+```swift
+let semaphore = DispatchSemaphore(value: valueYouWant)
+```
+
+​	有了这个DispatchSemaphore之后，我们就可以将其嵌入到队列的闭包之中，实现对队列并发执行任务数量的精准控制。我们以打印一个九九乘法表为例
+
+```swift
+let semaphore = DispatchSemaphore(value: 1)
+let queue = DispatchQueue(label: "concurrent", attribute: .concurrent)
+
+for i in 1...9{
+  queue.async{
+    semaphore.wait()
+    var str = ""
+    for j in 1...9{
+      let value = i*j
+      let tempStr = value <= 9 ? " \(value)  " : "\(value)  "
+      str += tempStr
+    }
+    print(str)
+    semaphore.signal()
+  }
+}
+```
+
