@@ -25,7 +25,7 @@
 
 # iOS13以后的状况
 
-​	在iOS13及以后，应用的生命周期发生了变化，因为要配合iPadOS的发布以支持多窗口操作。在原本的情况中，一个应用通常有且只会有一个窗口（window），不存在多个窗口的情况，一次只能运行一个；而在iOS13中，应用可以同时打开多个窗口，其被称之为Session（会话），用以取代原本窗口的概念，一个会话中可以存在有多个Scene（场景）。生命周期管理的重心也因此转移到了场景上，我们将在这里重点讨论这个话题。
+​	在iOS13及以后，应用的生命周期发生了变化，因为要配合iPadOS的发布以支持多窗口操作。在原本的情况中，一个应用通常有且只会有一个窗口（window），不存在多个窗口的情况，一次只能运行一个；而在iOS13中，应用可以同时打开多个窗口，其被称之为Scene（场景），用以取代原本窗口的概念，一个场景唯一对应一个Session（会话），Session负责追踪和管理scene的各类细节。生命周期管理的重心也因此转移到了场景上，我们将在这里重点讨论这个话题。
 
 ​	在iOS13之前，应用的生命周期全权由AppDelegate负责，而在iOS13及以后的版本中，应用的生命周期被割裂成两块，AppDelegate只负责整个应用的启动和终结，而SceneDelegate则接手了原本AppDelegate的大部分职责，控制一个场景的应用状态的转移。为此，iOS13中出现了一种全新的状态——Unattached，用以表示场景未被“连接”上的状态（有别于原有的Not Running，程序本体仍然存在创建和销毁的过程）。
 
@@ -47,7 +47,52 @@
    2. 场景被推入前台，调用`sceneWillEnterForeground(_ scene: UIScene)`
    3. 标识活跃状态，调用`sceneDidBecomeActive(_ scene: UIScene)`
 10. 当用户进入后台卡片界面时，调用`sceneWillResignActive(_ scene: UIScene)`
-11. 当场景被关闭时，调用`sceneDidDisconnect(_ scene: UIScene)`
-12. 当会话被关闭时，调用`func sceneDidDisconnect(_ scene: UIScene)`和`application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>)`
-13. 当应用被关闭时，调用`applicationWillTerminate(_ application: UIApplication)`
+11. 当会话被关闭时，调用`func sceneDidDisconnect(_ scene: UIScene)`和`application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>)`
+12. 当应用被关闭时，调用`applicationWillTerminate(_ application: UIApplication)`
+
+# Delegate中状态函数的变化
+
+​	由于AppDelegate的指责被部分转移到了SceneDelegate中，我们需要简单梳理一下他们具体负责哪些部分
+
+ 	AppDelegate只负责整个应用的创生和毁灭，而且在启用了多窗口支持之后，其状态管理职责被转移（关闭多窗口支持则回到iOS13之前的状态），其中的函数也发生了相对应的改变。默认情况下AppDelegate只包含以下三个函数
+
++ `application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool`
+
+  与原来一致，没有发生改变
+
++ `application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration`
+
+  在应用创建一个**新的Scene**时被调用，用来管理和指定创建Scene时的配置，需要返回一个UISceneConfiguration对象。
+
++ `application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>)`
+
+  当用户手动在卡片式后台杀掉Scene的Session时调用。
+
+
+
+​	而SceneDelegate则继承了原来AppDelegate的大部分职能，负责Scene的各项生命周期，其中默认包含以下六个函数
+
++ `scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions)`
+
+  在Scene即将连接到Session时调用，此时被连接的Scene和Session不一定是新创建的，也有可能是之前被Disconect的Scene重新与Session建立连接
+
++ `sceneDidDisconnect(_ scene: UIScene)`
+
+  当Scene在后台停留过久或Session被用户手动时该函数就会被调用，会将Session与Scene断开连接，并且释放Scene中可以被重新创建的资源以节省内存空间，如果是Session被关闭则释放全部资源。
+
++ `sceneDidBecomeActive(_ scene: UIScene)`
+
+  当Scene进入活跃状态时被调用
+
++ `sceneWillResignActive(_ scene: UIScene)`
+
+  当Scene进入不活跃状态时被调用
+
++ `sceneWillEnterForeground(_ scene: UIScene)`
+
+  当Scene进入前台时被调用
+
++ `sceneDidEnterBackground(_ scene: UIScene)`
+
+  当Scene进入后台时被调用
 
