@@ -47,7 +47,7 @@
    2. 场景被推入前台，调用`sceneWillEnterForeground(_ scene: UIScene)`
    3. 标识活跃状态，调用`sceneDidBecomeActive(_ scene: UIScene)`
 10. 当用户进入后台卡片界面时，调用`sceneWillResignActive(_ scene: UIScene)`
-11. 当会话被关闭时，调用`func sceneDidDisconnect(_ scene: UIScene)`和`application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>)`
+11. 当会话被关闭时，调用`sceneDidDisconnect(_ scene: UIScene)`和`application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>)`
 12. 当应用被关闭时，调用`applicationWillTerminate(_ application: UIApplication)`
 
 # Delegate中状态函数的变化
