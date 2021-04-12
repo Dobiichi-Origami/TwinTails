@@ -163,4 +163,4 @@ static var allActivities: CFRunLoopActivity
 2. `CFRunLoopRunInMode(_ mode: CFRunLoopMode!, _ seconds: CFTimeInterval, _ returnAfterSourceHandled: Bool)` 以指定模式启动RunLoop，在超出设定的运行时间后停止。如果指定returnAfterSourceHandled为true或超时时间为0，则只会处理一项任务，然后立刻退出（也有例外，如果超时时间为0且待处理的任务中存在一项来自Source 0的事件，则可能会处理两项）
 2. Runloop不能在没有Source和Timer的mode中运行，否则会当场退出
 3. 虽然在进入Runloop后第一步就是通知Observer Runloop即将处理Timer，但是实际上Timer中的任务的处理是发生在图上第九步的，因为只有Timer到时间之后，它才会发送相应的信息给Runloop请求处理。
-4. Runloop的运行/休眠状态切换涉及到用户态到内核态的转换（`mach_msg()`本身就是个系统调用），引申出来在iOS和MacOS中进程间通信都必须经过内核转发
+4. Runloop的运行/休眠状态切换涉及到用户态到内核态的转换（`mach_msg()`本身就是个系统调用），引申出来在iOS和MacOS中进程间通信都必须经过内核转发。
